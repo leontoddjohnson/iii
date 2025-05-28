@@ -20,6 +20,9 @@ position = {0,0,0,0}  -- position of each arc encoder
 speed = {0,0,0,0}  -- speed of each arc encoder
 
 REDRAW_FRAMERATE = 30
+MODE = 1					-- 1: main, 2: notes, 3: scale
+KEY_HOLD = false  -- true if the key is held down
+KEY_HELD = false  -- true if there was valid activity on the last key hold
 
 -- ========================================================================== --
 -- RUN
@@ -28,32 +31,98 @@ REDRAW_FRAMERATE = 30
 arc_refresh()
 
 function tick()
-	for n=1,4 do
-		arc_led_all(n,0)
-		update_point(n)
-		draw_sequence(n)
+	for n=1,4 do 
+		arc_led_all(n,0)  -- refresh
+		play_note(n)   -- continue playing
+	end
+
+	if MODE == 1 then
+		redraw_rings()
+	elseif MODE == 2 then
+		redraw_notes()
+	elseif MODE == 3 then
+		redraw_scale()
 	end
 	arc_refresh()
 end
 
 function arc(n,d)
-	-- any movement on the arc will stop the ring
-	speed[n] = KEY_HOLD and 0 or clamp(speed[n] + d,-32,32)
+	if MODE == 1 then
+		arc_rings(n,d)
+	elseif MODE == 2 then
+		arc_notes(n,d)
+	elseif MODE == 3 then
+		arc_scale(n,d)
+	end
+
+	-- update movement during key hold
+	KEY_HELD = KEY_HOLD
 end
 
 function arc_key(z)
 	KEY_HOLD = z == 1 and true or false
+
+	if z == 0 then
+		if KEY_HELD then
+			KEY_HELD = false
+		else
+			MODE = (MODE % 3) + 1  -- cycle through modes
+		end
+	end
 end
 
-m = metro.new(tick, 1000//REDRAW_FRAMERATE)
+ticker = metro.new(tick, 1000//REDRAW_FRAMERATE)
+
+-- ========================================================================== --
+-- MODES
+-- ========================================================================== --
+
+-- rings -------------------------------------------------------------------- --
+
+function redraw_rings()
+	for n=1,4 do 
+		draw_sequence(n)
+		draw_point(n,position[n])
+	end
+end
+
+function arc_rings(n,d)
+	-- any movement on the arc will stop the ring
+	speed[n] = KEY_HOLD and 0 or clamp(speed[n] + d,-32,32)
+end
+
+-- notes -------------------------------------------------------------------- --
+
+-- DRAFT
+function redraw_notes()
+	n = 2
+	arc_led_all(n, 0)
+	arc_led(n, n * 8, 5)
+end
+
+function arc_notes(n,d)
+	print("arc_notes :: arc ", n, d)
+end
+
+-- scale -------------------------------------------------------------------- --
+
+-- DRAFT
+function redraw_scale()
+	n = 3
+	arc_led_all(n, 0)
+	arc_led(n, n * 4, 5)
+end
+
+function arc_scale(n,d)
+	print("arc_scale :: arc ", n, d)
+end
 
 -- ========================================================================== --
 -- UTILITY
 -- ========================================================================== --
 
--- draw and update the current position of ring `n`, also send MIDI.
--- each encoder corresponds to the corresponding MIDI channel.
-function update_point(n)
+-- play MIDI. each encoder corresponds to the corresponding MIDI channel.
+function play_note(n)
 	position[n] = position[n] + speed[n]
 	ch = n  -- MIDI channel is the same as the arc ring number
 
@@ -73,8 +142,6 @@ function update_point(n)
 		position[n] = position[n] % 1024
 		--ps("%d %d",n,note[n])
 	end
-
-	point(n,position[n])
 end
 
 -- draw the note sequence for ring `n`.
@@ -103,7 +170,7 @@ end
 
 -- Draw a "point" between 1-1024 using a few LEDs on the arc.
 -- (cr: @tehn, from snows.lua)
-function point(n,x)
+function draw_point(n,x)
 	local c = x >> 4  -- bitwise shift right (divide by 2^4, round down)
 	arc_led_rel(n,c%64+1,15)
 	arc_led_rel(n,(c+1)%64+1,x%16)
