@@ -37,11 +37,12 @@ function tick()
 end
 
 function arc(n,d)
-	speed[n] = clamp(speed[n] + d,-32,32)
+	-- any movement on the arc will stop the ring
+	speed[n] = KEY_HOLD and 0 or clamp(speed[n] + d,-32,32)
 end
 
 function arc_key(z)
-	for n=1,4 do speed[n] = 0 end
+	KEY_HOLD = z == 1 and true or false
 end
 
 m = metro.new(tick, 1000//REDRAW_FRAMERATE)
