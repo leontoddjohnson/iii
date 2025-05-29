@@ -21,7 +21,7 @@ Note sequence "sprockets" through at the top of the ring each time the moving po
 
 The top portion shows the notes in the sequence. The selected note is brightest, the currently playing note is slighly less bright, and the rest are dim.
 
-The bottom portion shows a 12-note window from the scale. The selected note placement is the brightest, the root note(s) slightly less bright, and the rest are dim.
+The bottom portion shows two octaves of notes from the scale. The selected note placement is the brightest, the root notes are slightly less bright, and the rest are dim.
 
 - **ENC (clockwise)**: select a note
 - **ENC (counter clockwise)**: place the note on the scale (de-selected is a rest)
@@ -31,9 +31,11 @@ The bottom portion shows a 12-note window from the scale. The selected note plac
 
 **window**
 
-Each sequence consists of notes defined on a 12-note window of the main scale (see below). The window is indicated by the bright lights (root notes being brightest), natural notes are less bright, de-selected sharps and flats are dim, and notes off the scale are dark.
+Each sequence consists of notes from the scale within a 2-octave window\* of the main scale (see below). The window is indicated by two bright lights surrounding the beginning and end of the window (i.e., the first note of the window is after the first bright light). Aside from these, the root notes are brightest, natural notes are less bright, sharps and flats are dim, and notes off the scale are dark.
 
-- **ENC**: define the 12-note scale window for ring
+\**The "window" is 25 notes from a chromatic scale.*
+
+- **ENC**: define the window for the ring
 - **KEY + ENC**: increment the scale window in octaves
 
 **scale**
@@ -43,10 +45,10 @@ Unless defined otherwise (see below), there are 9 scales to choose from, respect
 The ring around **ENC 4** shows a visualization of the scale across 5 chromatic octaves (60 notes), from the lower left of the ring to the lower right. Here, the root note is the brightest, natural notes are less bright, sharps and flats are dim, and notes off the scale are dark.
 
 - **ENC 1**: select a scale
-- **ENC 2**: select root note (A, A#, B, ..., to G#)\*
+- **ENC 2**: select root note (C, C#, D, ..., B)\*
 - **ENC 3**: set starting octave (can be from 1 to 5)
 - **ENC 4**: cycle scale (set "starting" note)
 
-\**The UI here is similar to the scale window above, with a chromatic scale.*
+\**The UI here is similar to the scale window, with no root.*
 
 You can add up to 32 scales to the top of the Lua file. Scales are defined by a sequence of semitone intervals *whose sum is equal to 12* (e.g., `{2, 2, 1, 2, 2, 2, 1}` represents a major scale).
