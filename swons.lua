@@ -8,7 +8,9 @@ scale_intervals = {
 	{ 2, 2, 3, 2, 3 },  -- major pentatonic
 	{ 3, 2, 2, 3, 2 },  -- minor pentatonic
 	{ 2, 1, 2, 2, 2, 1, 2 },  -- dorian
-	{ 4, 1, 2, 4, 1 }  -- okinawa
+	{ 4, 1, 2, 4, 1 },  -- okinawa
+	{ 2, 2, 2, 2, 2, 2 },  -- whole tone
+	{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 }  -- chromatic
 }
 
 scales = {}
@@ -19,67 +21,24 @@ notes[2] = {55,64}
 notes[3] = {69,74,76,79}
 notes[4] = {86,83,81,72,79}
 
+led_level = {
+	selected = 15,
+	root = 12,
+	natural = 5,
+	sharp_flat = 2,
+	off_scale = 0
+}
+
 note = {1,1,1,1}  -- note[n] is the index of the current note in notes[n]
 position = {0,0,0,0}  -- position of each arc encoder
 speed = {0,0,0,0}  -- speed of each arc encoder
 
 REDRAW_FRAMERATE = 30
-
-SCALE = 1         -- current scale
-MODE = 1		  -- 1: main, 2: notes, 3: scale
+NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
+SCALE = 8         -- current scale
+MODE = 1		      -- 1: main, 2: notes, 3: window, 4: scale
 KEY_HOLD = false  -- true if the key is held down
 KEY_HELD = false  -- true if there was valid activity on the last key hold
-
--- ========================================================================== --
--- RUN
--- ========================================================================== --
-
-arc_refresh()
-
-function tick()
-	for n=1,4 do 
-		arc_led_all(n,0)  -- refresh
-		play_note(n)   -- continue playing
-	end
-
-	if MODE == 1 then
-		redraw_rings()
-	elseif MODE == 2 then
-		redraw_notes()
-	elseif MODE == 3 then
-		redraw_window()
-	elseif MODE == 4 then
-		redraw_scale()
-	end
-	arc_refresh()
-end
-
-function arc(n,d)
-	if MODE == 1 then
-		arc_rings(n,d)
-	elseif MODE == 2 then
-		arc_notes(n,d)
-	elseif MODE == 3 then
-		arc_scale(n,d)
-	end
-
-	-- update movement during key hold
-	KEY_HELD = KEY_HOLD
-end
-
-function arc_key(z)
-	KEY_HOLD = z == 1 and true or false
-
-	if z == 0 then
-		if KEY_HELD then
-			KEY_HELD = false
-		else
-			MODE = (MODE % 3) + 1  -- cycle through modes
-		end
-	end
-end
-
-ticker = metro.new(tick, 1000//REDRAW_FRAMERATE)
 
 -- ========================================================================== --
 -- MODES
@@ -105,7 +64,10 @@ end
 function redraw_notes()
 	n = 2
 	arc_led_all(n, 0)
-	arc_led(n, n * 8, 5)
+	for i = 1,n do
+		arc_led(n, i, 1)
+	end
+	arc_led(n, 33, 1)
 end
 
 function arc_notes(n,d)
@@ -116,22 +78,23 @@ end
 
 -- DRAFT
 function redraw_window()
-	n = 2
+	n = 3
 	arc_led_all(n, 0)
-	arc_led(n, n * 8, 5)
+	for i = 1,n do
+		arc_led(n, i, 1)
+	end
 end
 
 function arc_window(n,d)
-	scales[SCALE]:set_window()
+	print("arc_window :: arc ", n, d)
 end
 
 -- scale -------------------------------------------------------------------- --
 
 -- DRAFT
 function redraw_scale()
-	n = 3
 	arc_led_all(n, 0)
-	arc_led(n, n * 4, 5)
+	draw_scale(4)
 end
 
 function arc_scale(n,d)
@@ -145,64 +108,97 @@ end
 function build_scales()
 	for i,scale in ipairs(scale_intervals) do
 		scales[i] = {}
-		scales[i].root = 0  -- 0 -> C, 1 -> C#, ..., up to 12 -> B
+		scales[i].root = 0  -- 0 -> C, 1 -> C#, ..., up to 11 -> B
 		scales[i].octave = 2  -- starting octave, from 0 to 5
 		scales[i].scale = sum(scale) == 12 and scale or { 2, 2, 3, 2, 3 }
-		scales[i].mod = 0  -- number of notes to modulate, *up to 12*
+		scales[i].mod = 0  -- number of in-scale notes to modulate, up to #scale
 
 		for arc=1,4 do
 			scales[i][arc] = {}
 			scales[i][arc].notes = {1}  -- index of in-scale note in window
-			scales[i][arc].window_start = 0  -- in semitones from base
+			scales[i][arc].window_start = 0  -- in semitones from base note
 		end
-
-		-- function scales[i]:draw_scale()
-		-- 	-- ...
-		-- end
-
-		-- Build window of *in-scale* notes spanning 2 (chromatic) octaves, 
-		-- starting at MIDI note `window_start`. The sequence of `notes` are 
-		-- indexes from this window. 
-		function scales[i]:reset_window(window_start)
-			self[arc].window_start = window_start
-
-			local offset = 0  -- scale notes between root and window start
-			local offset_st = 0  -- semitones of scale notes before window start
-			
-			-- iterate through semitones before window start to calculate offset
-			for i = 0,window_start % 12 do
-				if i >= offset_st + self.scale[offset + 1] then
-					offset_st = offset_st + self.scale[offset + 1]
-					offset = offset + 1
-				end
-			end
-
-			self[arc].window = {}
-			local midi_note  -- MIDI index of note in the scale
-
-			-- new starting point = root note before/at beginning of the window
-			local start = self.root 
-							+ self.octave * 12 
-							+ window_start // 12
-
-			-- build two octaves of scale notes
-			for i=1,#self.scale * 2 do
-				midi_note = start + (offset + i) % #self.scale
-				table.insert(self[arc].window, midi_note)
-			end
-		end
-
-		-- -- convert sequence index of note (`note`) to a MIDI note 0-128.
-		-- function scales[i]:seq_to_midi(note, arc)
-		-- 	-- ...
-
-		-- 	return self.root 
-				
-		-- 		+ interval
-		-- end
-
 	end
 end
+
+function draw_scale(arc)
+	local n_intervals = #scales[SCALE].scale	-- number of intervals in the scale
+	local octave = scales[SCALE].octave
+	local note = octave * 12 + scales[SCALE].root
+	local led = 35  -- first LED for scale on arc
+	local interval
+
+	while octave - scales[SCALE].octave < 5 do
+		-- draw root note
+		note = octave * 12 + scales[SCALE].root
+		draw_note(note, led, arc)
+
+		for i=1,n_intervals do
+			interval = (scales[SCALE].scale[i] + scales[SCALE].mod) % n_intervals
+			note = note + interval
+			led = led + interval
+			draw_note(note, led, arc)
+		end
+
+		octave = octave + 1
+	end
+end
+
+-- Draw MIDI note `note` on arc `arc` at LED `led` based on the current scale.
+function draw_note(note, led, arc)
+	led = led < 65 and led or led % 64
+
+	if (note - scales[SCALE].root) % 12 == 0 then
+		arc_led(arc, led, led_level.root)  -- root note
+	elseif note_is_natural(note) then
+		arc_led(arc, led, led_level.natural)  -- natural note
+	else
+		arc_led(arc, led, led_level.sharp_flat)  -- sharp or flat note
+	end
+end
+
+-- Build window of *in-scale* notes spanning 2 (chromatic) octaves, 
+-- starting at MIDI note `window_start`. The sequence of `notes` are 
+-- indexes from this window.
+function scales:reset_window(window_start, arc)
+	self[SCALE][arc].window_start = window_start
+
+	local base_note = self[SCALE].root + self[SCALE].mod + self[SCALE].octave * 12
+	local window_start = base_note + window_start
+	local offset = 0  -- scale notes between root and window start
+	local offset_st = 0  -- semitones of scale notes before window start
+	
+	-- iterate through semitones before window start to calculate offset
+	for i = 0,window_start % 12 do
+		if i >= offset_st + self[SCALE].scale[offset + 1] then
+			offset_st = offset_st + self[SCALE].scale[offset + 1]
+			offset = offset + 1
+		end
+	end
+
+	self[SCALE][arc].window = {}
+
+	local midi_note  -- MIDI index of note in the scale
+	local interval
+
+	-- build two octaves of scale notes (inclusive)
+	table.insert(self[SCALE][arc].window, midi_note)
+
+	for i=0,#self[SCALE].scale * 2 do
+		interval = self[SCALE].scale[(offset + i) % #self[SCALE].scale + 1]
+		midi_note = window_start // 12 + interval
+		table.insert(self[SCALE][arc].window, midi_note)
+	end
+end
+
+-- -- convert sequence index of note (`note`) to a MIDI note 0-128.
+-- function scales[i]:seq_to_midi(note, arc)
+-- 	-- ...
+
+-- 	return self.root 
+		
+-- 		+ interval
+-- end
 
 -- -- convert `scales[i][arc].notes[j]` indices to midi notes
 -- function note_to_midi(note)
@@ -271,4 +267,86 @@ function draw_point(n,x)
 	arc_led_rel(n,c%64+1,15)
 	arc_led_rel(n,(c+1)%64+1,x%16)
 	arc_led_rel(n,(c+63)%64+1,15-(x%16))
+end
+
+function note_is_natural(note)
+  if note % 12 == 1 
+    or note % 12 == 3 
+    or note % 12 == 6 
+    or note % 12 == 8 
+    or note % 12 == 10 then
+    return false
+  else
+    return true
+  end
+end
+
+-- ========================================================================== --
+-- RUN
+-- ========================================================================== --
+
+function tick()
+	for n=1,4 do 
+		arc_led_all(n,0)  -- refresh
+		play_note(n)   -- continue playing
+	end
+
+	if MODE == 1 then
+		redraw_rings()
+	elseif MODE == 2 then
+		redraw_notes()
+	elseif MODE == 3 then
+		redraw_window()
+	elseif MODE == 4 then
+		redraw_scale()
+	end
+	arc_refresh()
+end
+
+function arc(n,d)
+	if MODE == 1 then
+		arc_rings(n,d)
+	elseif MODE == 2 then
+		arc_notes(n,d)
+	elseif MODE == 3 then
+		arc_window(n,d)
+	elseif MODE == 4 then
+		arc_scale(n,d)
+	end
+
+	-- update movement during key hold
+	KEY_HELD = KEY_HOLD
+end
+
+function arc_key(z)
+	KEY_HOLD = z == 1 and true or false
+
+	if z == 0 then
+		if KEY_HELD then
+			KEY_HELD = false
+		else
+			MODE = (MODE % 4) + 1  -- cycle through modes
+		end
+	end
+end
+
+arc_refresh()
+build_scales()
+ticker = metro.new(tick, 1000//REDRAW_FRAMERATE)
+
+-- ========================================================================== --
+-- HELPER FUNCTIONS                                                           --
+-- ========================================================================== --
+-- function to print table
+function print_table(t, indent)
+  indent = indent or 0
+  for k, v in pairs(t) do
+    local prefix = string.rep(" ", indent)
+    if type(v) == "table" then
+      print(prefix .. tostring(k) .. ":")
+      print_table(v, indent + 2)
+    else
+      print(prefix .. tostring(k) .. ": " .. tostring(v))
+    end
+  end
 end

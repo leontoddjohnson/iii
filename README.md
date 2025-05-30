@@ -42,7 +42,7 @@ Each sequence consists of notes from the scale within a 2-octave window\* of the
 
 Unless defined otherwise (see below), there are 9 scales to choose from, respectively: major, natural minor, melodic minor, harmonic minor, major pentatonic, minor pentatonic, dorian, okinawa, chromatic. These scales are played using the 128 MIDI notes, where note `0` is *C-1*, and the rest follow in semitones (up to 10 full octaves).
 
-The ring around **ENC 4** shows a visualization of the scale across 5 chromatic octaves (60 notes), from the lower left of the ring to the lower right. Here, the root note is the brightest, natural notes are less bright, sharps and flats are dim, and notes off the scale are dark.
+The ring around **ENC 4** shows a visualization of the scale across 5 chromatic octaves inclusive (61 notes), from the lower left of the ring to the lower right. Here, the root note is the brightest, natural notes are less bright, sharps and flats are dim, and notes off the scale are dark.
 
 - **ENC 1**: select a scale
 - **ENC 2**: select root note (C, C#, D, ..., B)\*

@@ -11,6 +11,19 @@ local function point(n,x)
 	arc_led_rel(n,(c+63)%64+1,15-(x%16))
 end
 
+-- determine if MIDI note is sharp or flat
+local function note_is_natural(note)
+  if note % 12 == 1 
+    or note % 12 == 3 
+    or note % 12 == 6 
+    or note % 12 == 8 
+    or note % 12 == 10 then
+    return false
+  else
+    return true
+  end
+end
+
 -- ========================================================================== --
 -- ARC HELPER FUNCTIONS ON NORNS
 -- ========================================================================== --
