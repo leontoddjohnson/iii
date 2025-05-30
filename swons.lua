@@ -1,13 +1,17 @@
 -- based on @tehn's snows.lua
 
 print("\n^______^")
-scale = {}
-scale[1] = { 2, 2, 1, 2, 2, 2, 1 }  -- major
-scale[2] = { 2, 1, 2, 2, 1, 2, 2 }  -- minor
-scale[3] = { 2, 2, 3, 2, 3 } -- major pentatonic
-scale[4] = { 3, 2, 2, 3, 2 } -- minor pentatonic
-scale[5] = { 2, 1, 2, 2, 2, 1, 2 }  -- dorian
-scale[6] = { 4, 1, 2, 4, 1 }  -- okinawa
+
+scale_intervals = {
+	{ 2, 2, 1, 2, 2, 2, 1 },  -- major
+	{ 2, 1, 2, 2, 1, 2, 2 },  -- minor
+	{ 2, 2, 3, 2, 3 },  -- major pentatonic
+	{ 3, 2, 2, 3, 2 },  -- minor pentatonic
+	{ 2, 1, 2, 2, 2, 1, 2 },  -- dorian
+	{ 4, 1, 2, 4, 1 }  -- okinawa
+}
+
+scales = {}
 
 notes = {}
 notes[1] = {45,43,50}
@@ -20,7 +24,9 @@ position = {0,0,0,0}  -- position of each arc encoder
 speed = {0,0,0,0}  -- speed of each arc encoder
 
 REDRAW_FRAMERATE = 30
-MODE = 1					-- 1: main, 2: notes, 3: scale
+
+SCALE = 1         -- current scale
+MODE = 1		  -- 1: main, 2: notes, 3: scale
 KEY_HOLD = false  -- true if the key is held down
 KEY_HELD = false  -- true if there was valid activity on the last key hold
 
@@ -41,6 +47,8 @@ function tick()
 	elseif MODE == 2 then
 		redraw_notes()
 	elseif MODE == 3 then
+		redraw_window()
+	elseif MODE == 4 then
 		redraw_scale()
 	end
 	arc_refresh()
@@ -104,6 +112,19 @@ function arc_notes(n,d)
 	print("arc_notes :: arc ", n, d)
 end
 
+-- window ------------------------------------------------------------------- --
+
+-- DRAFT
+function redraw_window()
+	n = 2
+	arc_led_all(n, 0)
+	arc_led(n, n * 8, 5)
+end
+
+function arc_window(n,d)
+	scales[SCALE]:set_window()
+end
+
 -- scale -------------------------------------------------------------------- --
 
 -- DRAFT
@@ -120,6 +141,81 @@ end
 -- ========================================================================== --
 -- UTILITY
 -- ========================================================================== --
+
+function build_scales()
+	for i,scale in ipairs(scale_intervals) do
+		scales[i] = {}
+		scales[i].root = 0  -- 0 -> C, 1 -> C#, ..., up to 12 -> B
+		scales[i].octave = 2  -- starting octave, from 0 to 5
+		scales[i].scale = sum(scale) == 12 and scale or { 2, 2, 3, 2, 3 }
+		scales[i].mod = 0  -- number of notes to modulate, *up to 12*
+
+		for arc=1,4 do
+			scales[i][arc] = {}
+			scales[i][arc].notes = {1}  -- index of in-scale note in window
+			scales[i][arc].window_start = 0  -- in semitones from base
+		end
+
+		-- function scales[i]:draw_scale()
+		-- 	-- ...
+		-- end
+
+		-- Build window of *in-scale* notes spanning 2 (chromatic) octaves, 
+		-- starting at MIDI note `window_start`. The sequence of `notes` are 
+		-- indexes from this window. 
+		function scales[i]:reset_window(window_start)
+			self[arc].window_start = window_start
+
+			local offset = 0  -- scale notes between root and window start
+			local offset_st = 0  -- semitones of scale notes before window start
+			
+			-- iterate through semitones before window start to calculate offset
+			for i = 0,window_start % 12 do
+				if i >= offset_st + self.scale[offset + 1] then
+					offset_st = offset_st + self.scale[offset + 1]
+					offset = offset + 1
+				end
+			end
+
+			self[arc].window = {}
+			local midi_note  -- MIDI index of note in the scale
+
+			-- new starting point = root note before/at beginning of the window
+			local start = self.root 
+							+ self.octave * 12 
+							+ window_start // 12
+
+			-- build two octaves of scale notes
+			for i=1,#self.scale * 2 do
+				midi_note = start + (offset + i) % #self.scale
+				table.insert(self[arc].window, midi_note)
+			end
+		end
+
+		-- -- convert sequence index of note (`note`) to a MIDI note 0-128.
+		-- function scales[i]:seq_to_midi(note, arc)
+		-- 	-- ...
+
+		-- 	return self.root 
+				
+		-- 		+ interval
+		-- end
+
+	end
+end
+
+-- -- convert `scales[i][arc].notes[j]` indices to midi notes
+-- function note_to_midi(note)
+-- 	local 
+-- 	return 
+-- end
+
+-- calculate the sum of numeric values in a table
+function sum(t)
+	local s = 0
+	for i,v in ipairs(t) do s = s + v end
+	return s
+end
 
 -- play MIDI. each encoder corresponds to the corresponding MIDI channel.
 function play_note(n)
