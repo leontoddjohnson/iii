@@ -172,14 +172,11 @@ function draw_selection(selection, n_options, arc, buffer, start)
 	start = start or SELECTION_START
 
 	local led = start
-	local level = selection == 1 and led_level.selected or led_level.deselected
-	
-	arc_led(arc, led, level)
 
-	for i=2,n_options do
-		led = led + buffer + 1
+	for i=1,n_options do
 		level = selection == i and led_level.selected or led_level.deselected
 		arc_led(arc, led, level)
+		led = wrap(led + buffer + 1, 1, 64)
 	end
 end
 
