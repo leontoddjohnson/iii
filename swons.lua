@@ -1,6 +1,4 @@
--- based on @tehn's snows.lua
-
-print("\n^______^")
+print("\n^______^")  -- based on @tehn's snows.lua
 
 scale_intervals = {
 	{ 2, 2, 1, 2, 2, 2, 1 },  -- major
@@ -23,9 +21,10 @@ notes[4] = {86,83,81,72,79}
 
 led_level = {
 	selected = 15,
-	root = 12,
-	natural = 5,
-	sharp_flat = 2,
+	deselected = 3,
+	root = 10,
+	natural = 4,
+	sharp_flat = 1,
 	off_scale = 0
 }
 
@@ -34,9 +33,10 @@ position = {0,0,0,0}  -- position of each arc encoder
 speed = {0,0,0,0}  -- speed of each arc encoder
 
 REDRAW_FRAMERATE = 30
+SELECTION_START = 40
 NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
 SCALE = 8         -- current scale
-MODE = 1		      -- 1: main, 2: notes, 3: window, 4: scale
+MODE = 4		      -- 1: main, 2: notes, 3: window, 4: scale
 KEY_HOLD = false  -- true if the key is held down
 KEY_HELD = false  -- true if there was valid activity on the last key hold
 
@@ -93,12 +93,30 @@ end
 
 -- DRAFT
 function redraw_scale()
-	arc_led_all(n, 0)
+	-- arc 1
+	draw_selection(SCALE, #scale_intervals, 1)
+
+	-- arc 2
+	draw_root_selection(2)
+
+	-- arc 3
+	draw_selection(scales[SCALE].octave + 1, 5, 3)  -- octave is 0-indexed
+
+	-- arc 4
 	draw_scale(4)
 end
 
 function arc_scale(n,d)
-	print("arc_scale :: arc ", n, d)
+	if n == 1 then
+		SCALE = clamp(SCALE + d, 1, #scale_intervals)
+	elseif n == 2 then
+		scales[SCALE].root = wrap(scales[SCALE].root + d, 0, 11)
+	elseif n == 3 then
+		scales[SCALE].octave = clamp(scales[SCALE].octave + d, 0, 4)
+	elseif n == 4 then
+		local mod_bound = #scales[SCALE].scale - 1
+		scales[SCALE].mod = clamp(scales[SCALE].mod - d, -mod_bound, mod_bound)
+	end
 end
 
 -- ========================================================================== --
@@ -117,27 +135,89 @@ function build_scales()
 			scales[i][arc] = {}
 			scales[i][arc].notes = {1}  -- index of in-scale note in window
 			scales[i][arc].window_start = 0  -- in semitones from base note
+			scales[i][arc].window = {}  -- in-scale notes in the window
+			scales[i][arc].full_scale = {}  -- full scale notes in the octave
 		end
 	end
 end
 
+function draw_root_selection(arc)
+	local buffer = 1
+	local led = SELECTION_START
+
+	if scales[SCALE].root == 0 then 
+		arc_led(arc, led, led_level.selected) 
+	else
+		arc_led(arc, led, led_level.root) 
+	end
+
+	for i=1,11 do
+		led = led + buffer + 1  -- move to next LED
+		if scales[SCALE].root == i then
+			arc_led(arc, led, led_level.selected)
+		elseif note_is_natural(i) then
+			arc_led(arc, led, led_level.natural)
+		else
+			arc_led(arc, led, led_level.sharp_flat)
+		end
+	end
+end
+
+-- **1-indexed** indicator for the selection of some `n_options`.
+-- `selection` is the (1-based) index among the `n_options`.
+-- `buffer` is the number of empty LEDs between options, and 
+-- `start` is the first LED index.
+function draw_selection(selection, n_options, arc, buffer, start)
+	buffer = buffer or 2
+	start = start or SELECTION_START
+
+	local led = start
+	local level = selection == 1 and led_level.selected or led_level.deselected
+	
+	arc_led(arc, led, level)
+
+	for i=2,n_options do
+		led = led + buffer + 1
+		level = selection == i and led_level.selected or led_level.deselected
+		arc_led(arc, led, level)
+	end
+end
+
 function draw_scale(arc)
-	local n_intervals = #scales[SCALE].scale	-- number of intervals in the scale
 	local octave = scales[SCALE].octave
-	local note = octave * 12 + scales[SCALE].root
+	local mod_sum = 0  -- total intervals attributed to the modulation
 	local led = 35  -- first LED for scale on arc
-	local interval
+	local interval, interval_i, note
+
+	if scales[SCALE].mod > 0 then
+		for i=1,scales[SCALE].mod do
+			mod_sum = mod_sum + scales[SCALE].scale[i]
+		end
+	elseif scales[SCALE].mod < 0 then
+		for i=#scales[SCALE].scale + scales[SCALE].mod + 1,#scales[SCALE].scale do
+			mod_sum = mod_sum - scales[SCALE].scale[i]
+		end
+	end
 
 	while octave - scales[SCALE].octave < 5 do
-		-- draw root note
-		note = octave * 12 + scales[SCALE].root
-		draw_note(note, led, arc)
+		-- draw first note
+		note = octave * 12 + scales[SCALE].root + mod_sum
 
-		for i=1,n_intervals do
-			interval = (scales[SCALE].scale[i] + scales[SCALE].mod) % n_intervals
+		if 0 <= note and note <= 128 then
+			-- add to full scale?
+			draw_note(note, led, arc) 
+		end
+
+		for i=1,#scales[SCALE].scale do
+			interval_i = wrap(i + scales[SCALE].mod, 1, #scales[SCALE].scale)
+			interval = scales[SCALE].scale[interval_i]
 			note = note + interval
 			led = led + interval
-			draw_note(note, led, arc)
+
+			if 0 <= note and note <= 128 then
+				-- add to full scale?
+				draw_note(note, led, arc)
+			end
 		end
 
 		octave = octave + 1
@@ -146,7 +226,7 @@ end
 
 -- Draw MIDI note `note` on arc `arc` at LED `led` based on the current scale.
 function draw_note(note, led, arc)
-	led = led < 65 and led or led % 64
+	led = wrap(led, 1, 64)
 
 	if (note - scales[SCALE].root) % 12 == 0 then
 		arc_led(arc, led, led_level.root)  -- root note
@@ -281,6 +361,18 @@ function note_is_natural(note)
   end
 end
 
+function set_arc_res(mode)
+	if mode == 1 then
+		for n=1,4 do arc_res(n, 1) end
+	elseif mode == 2 then
+		for n=1,4 do arc_res(n, 16) end
+	elseif mode == 3 then
+		for n=1,4 do arc_res(n, 8) end
+	elseif mode == 4 then
+		for n=1,4 do arc_res(n, 8) end
+	end
+end
+
 -- ========================================================================== --
 -- RUN
 -- ========================================================================== --
@@ -326,11 +418,13 @@ function arc_key(z)
 			KEY_HELD = false
 		else
 			MODE = (MODE % 4) + 1  -- cycle through modes
+			set_arc_res(MODE)
 		end
 	end
 end
 
 arc_refresh()
+set_arc_res(MODE)
 build_scales()
 ticker = metro.new(tick, 1000//REDRAW_FRAMERATE)
 
