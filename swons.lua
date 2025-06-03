@@ -111,7 +111,6 @@ end
 function arc_scale(n,d)
 	if n == 1 then
 		SCALE = clamp(SCALE + d, 1, #scale_intervals)
-		-- scales[SCALE].full_scale = {}
 	elseif n == 2 then
 		scales[SCALE].root = wrap(scales[SCALE].root + d, 0, 11)
 	elseif n == 3 then
@@ -120,6 +119,7 @@ function arc_scale(n,d)
 		local mod_bound = #scales[SCALE].scale - 1
 		scales[SCALE].mod = clamp(scales[SCALE].mod - d, -mod_bound, mod_bound)
 	end
+	scales[SCALE].full_scale = {}
 end
 
 -- ========================================================================== --
@@ -189,7 +189,7 @@ function draw_scale(arc, draw)
 	local led = 35  -- first LED for scale on arc
 	local interval, interval_i, note
 
-	draw = draw or true
+	draw = draw == nil and true or false
 
 	if scales[SCALE].mod > 0 then
 		for i=1,scales[SCALE].mod do
