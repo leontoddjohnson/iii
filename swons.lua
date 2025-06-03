@@ -34,9 +34,10 @@ speed = {0,0,0,0}  -- speed of each arc encoder
 
 REDRAW_FRAMERATE = 30
 SELECTION_START = 40
+WINDOW_SIZE = 16  -- size of the window in semitones
 NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
 SCALE = 8         -- current scale
-MODE = 4		      -- 1: main, 2: notes, 3: window, 4: scale
+MODE = 3		      -- 1: main, 2: notes, 3: window, 4: scale
 KEY_HOLD = false  -- true if the key is held down
 KEY_HELD = false  -- true if there was valid activity on the last key hold
 
@@ -76,22 +77,23 @@ end
 
 -- window ------------------------------------------------------------------- --
 
--- DRAFT
 function redraw_window()
-	n = 3
-	arc_led_all(n, 0)
-	for i = 1,n do
-		arc_led(n, i, 1)
+	-- build (don't draw) scale with arbitrary arc (1)
+	if #scales[SCALE].full_scale == 0 then draw_scale(1, false) end
+	
+	for arc = 1,4 do
+		draw_window(arc)
 	end
 end
 
 function arc_window(n,d)
-	print("arc_window :: arc ", n, d)
+	local last_value = scales[SCALE][n].window_start
+
+	scales[SCALE][n].window_start = clamp(last_value + d, 0, 60 - WINDOW_SIZE + 1)
 end
 
 -- scale -------------------------------------------------------------------- --
 
--- DRAFT
 function redraw_scale()
 	-- arc 1
 	draw_selection(SCALE, #scale_intervals, 1)
@@ -109,6 +111,7 @@ end
 function arc_scale(n,d)
 	if n == 1 then
 		SCALE = clamp(SCALE + d, 1, #scale_intervals)
+		-- scales[SCALE].full_scale = {}
 	elseif n == 2 then
 		scales[SCALE].root = wrap(scales[SCALE].root + d, 0, 11)
 	elseif n == 3 then
@@ -130,13 +133,13 @@ function build_scales()
 		scales[i].octave = 2  -- starting octave, from 0 to 5
 		scales[i].scale = sum(scale) == 12 and scale or { 2, 2, 3, 2, 3 }
 		scales[i].mod = 0  -- number of in-scale notes to modulate, up to #scale
+		scales[i].full_scale = {}  -- five octaves of scale indicated on arc
 
 		for arc=1,4 do
 			scales[i][arc] = {}
 			scales[i][arc].notes = {1}  -- index of in-scale note in window
 			scales[i][arc].window_start = 0  -- in semitones from base note
 			scales[i][arc].window = {}  -- in-scale notes in the window
-			scales[i][arc].full_scale = {}  -- full scale notes in the octave
 		end
 	end
 end
@@ -180,11 +183,13 @@ function draw_selection(selection, n_options, arc, buffer, start)
 	end
 end
 
-function draw_scale(arc)
+function draw_scale(arc, draw)
 	local octave = scales[SCALE].octave
 	local mod_sum = 0  -- total intervals attributed to the modulation
 	local led = 35  -- first LED for scale on arc
 	local interval, interval_i, note
+
+	draw = draw or true
 
 	if scales[SCALE].mod > 0 then
 		for i=1,scales[SCALE].mod do
@@ -201,8 +206,8 @@ function draw_scale(arc)
 		note = octave * 12 + scales[SCALE].root + mod_sum
 
 		if 0 <= note and note <= 128 then
-			-- add to full scale?
-			draw_note(note, led, arc) 
+			scales[SCALE].full_scale[wrap(led - 35 + 1, 1, 64)] = note
+			if draw then draw_note(note, led, arc) end
 		end
 
 		for i=1,#scales[SCALE].scale do
@@ -212,12 +217,25 @@ function draw_scale(arc)
 			led = led + interval
 
 			if 0 <= note and note <= 128 then
-				-- add to full scale?
-				draw_note(note, led, arc)
+				scales[SCALE].full_scale[wrap(led - 35 + 1, 1, 64)] = note
+				if draw then draw_note(note, led, arc) end
 			end
 		end
 
 		octave = octave + 1
+	end
+end
+
+function draw_window(arc)
+	-- LED 34 is the last LED before the start of the scale
+	local start = scales[SCALE][arc].window_start
+	local stop = scales[SCALE][arc].window_start + WINDOW_SIZE - 1
+	local note, note_i
+
+	for i=start,stop do
+		note = scales[SCALE].full_scale[i+1]
+		note_i = wrap(i + 35, 1, 64)
+		if note then draw_note(note, note_i, arc) end
 	end
 end
 
@@ -233,55 +251,6 @@ function draw_note(note, led, arc)
 		arc_led(arc, led, led_level.sharp_flat)  -- sharp or flat note
 	end
 end
-
--- Build window of *in-scale* notes spanning 2 (chromatic) octaves, 
--- starting at MIDI note `window_start`. The sequence of `notes` are 
--- indexes from this window.
-function scales:reset_window(window_start, arc)
-	self[SCALE][arc].window_start = window_start
-
-	local base_note = self[SCALE].root + self[SCALE].mod + self[SCALE].octave * 12
-	local window_start = base_note + window_start
-	local offset = 0  -- scale notes between root and window start
-	local offset_st = 0  -- semitones of scale notes before window start
-	
-	-- iterate through semitones before window start to calculate offset
-	for i = 0,window_start % 12 do
-		if i >= offset_st + self[SCALE].scale[offset + 1] then
-			offset_st = offset_st + self[SCALE].scale[offset + 1]
-			offset = offset + 1
-		end
-	end
-
-	self[SCALE][arc].window = {}
-
-	local midi_note  -- MIDI index of note in the scale
-	local interval
-
-	-- build two octaves of scale notes (inclusive)
-	table.insert(self[SCALE][arc].window, midi_note)
-
-	for i=0,#self[SCALE].scale * 2 do
-		interval = self[SCALE].scale[(offset + i) % #self[SCALE].scale + 1]
-		midi_note = window_start // 12 + interval
-		table.insert(self[SCALE][arc].window, midi_note)
-	end
-end
-
--- -- convert sequence index of note (`note`) to a MIDI note 0-128.
--- function scales[i]:seq_to_midi(note, arc)
--- 	-- ...
-
--- 	return self.root 
-		
--- 		+ interval
--- end
-
--- -- convert `scales[i][arc].notes[j]` indices to midi notes
--- function note_to_midi(note)
--- 	local 
--- 	return 
--- end
 
 -- calculate the sum of numeric values in a table
 function sum(t)
