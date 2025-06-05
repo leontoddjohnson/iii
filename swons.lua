@@ -33,6 +33,7 @@ REDRAW_FRAMERATE = 30
 SELECTION_START = 40
 WINDOW_SIZE = 15  -- size of the window in semitones
 MAX_NOTES = 16
+MAX_SCALES = 28
 NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
 SCALE = 8         -- current scale
 MODE = 1		      -- 1: main, 2: notes, 3: window, 4: scale
@@ -173,6 +174,13 @@ end
 function arc_scale(n,d)
 	if n == 1 then
 		SCALE = clamp(SCALE + d, 1, #scale_intervals)
+
+		-- stop notes playing
+		local midi_note
+		for m=1,4 do
+			midi_note = window_note(n, scales[SCALE][m].notes[note_playing[m]])
+			midi_note_off(midi_note, 127, m)
+		end
 	elseif n == 2 then
 		scales[SCALE].root = wrap(scales[SCALE].root + d, 0, 11)
 	elseif n == 3 then
@@ -190,6 +198,8 @@ end
 
 function build_scales()
 	for i,scale in ipairs(scale_intervals) do
+		if i > MAX_SCALES then return end
+
 		scales[i] = {}
 		scales[i].root = 0  -- 0 -> C, 1 -> C#, ..., up to 11 -> B
 		scales[i].octave = 2  -- starting octave, from 0 to 5
