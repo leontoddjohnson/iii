@@ -19,6 +19,8 @@ notes[2] = {55,64}
 notes[3] = {69,74,76,79}
 notes[4] = {86,83,81,72,79}
 
+note_selected = {1, 1, 1, 1}  -- selected note of sequence (in notes mode)
+
 led_level = {
 	selected = 15,
 	deselected = 3,
@@ -34,10 +36,11 @@ speed = {0,0,0,0}  -- speed of each arc encoder
 
 REDRAW_FRAMERATE = 30
 SELECTION_START = 40
-WINDOW_SIZE = 16  -- size of the window in semitones
+WINDOW_SIZE = 15  -- size of the window in semitones
+MAX_NOTES = 16
 NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
 SCALE = 8         -- current scale
-MODE = 3		      -- 1: main, 2: notes, 3: window, 4: scale
+MODE = 1		      -- 1: main, 2: notes, 3: window, 4: scale
 KEY_HOLD = false  -- true if the key is held down
 KEY_HELD = false  -- true if there was valid activity on the last key hold
 
@@ -61,26 +64,66 @@ end
 
 -- notes -------------------------------------------------------------------- --
 
--- DRAFT
 function redraw_notes()
-	n = 2
-	arc_led_all(n, 0)
-	for i = 1,n do
-		arc_led(n, i, 1)
+	local n_notes, led_start, led, window_start, note
+	local buffer = 1
+
+	for n=1,4 do
+		-- top portion: sequence note selection
+		n_notes = #scales[SCALE][n].notes
+		led_start = - ((n_notes + buffer * (n_notes - 1)) // 2) % 64 + 1
+		draw_selection(note_selected[n], n_notes, n, buffer, led_start)
+
+		-- bottom portion: notes in the window
+		led = 32 + WINDOW_SIZE // 2
+		window_start = scales[SCALE][n].window_start
+
+		for i=1,WINDOW_SIZE do
+			-- draw the note in the window
+			note = scales[SCALE].full_scale[window_start + i]
+			if note then draw_note(note, led, n) end
+
+			-- draw the note in the sequence
+			note = window_note(n, scales[SCALE][n].notes[note_selected[n]])
+			if note == scales[SCALE].full_scale[window_start + i] then
+				arc_led(n, led, led_level.selected)
+			end
+			
+			led = led - 1
+		end
 	end
-	arc_led(n, 33, 1)
 end
 
 function arc_notes(n,d)
-	print("arc_notes :: arc ", n, d)
+	local n_notes = #scales[SCALE][n].notes
+	local note, range
+
+	if KEY_HOLD then
+		if d > 0 and n_notes < MAX_NOTES then
+			-- let any new note be the first note in the window
+			table.insert(scales[SCALE][n].notes, 1)
+		elseif d < 0 and n_notes > 1 then
+			if note_selected[n] == n_notes then
+				-- if the last note is selected, select the previous one
+				note_selected[n] = wrap(note_selected[n] - 1, 1, n_notes - 1)
+			end
+			-- remove the last note in the sequence
+			table.remove(scales[SCALE][n].notes)
+		end
+	elseif d > 0 then
+		-- select note (index) in the sequence
+		note_selected[n] = wrap(note_selected[n] + 1, 1, n_notes)
+	elseif d < 0 then
+		-- assign scale note to sequence note
+		note = scales[SCALE][n].notes[note_selected[n]]
+		range = window_length(n)
+		scales[SCALE][n].notes[note_selected[n]] = wrap(note + 1, 1, range)
+	end
 end
 
 -- window ------------------------------------------------------------------- --
 
 function redraw_window()
-	-- build (don't draw) scale with arbitrary arc (1)
-	if #scales[SCALE].full_scale == 0 then draw_scale(1, false) end
-	
 	for arc = 1,4 do
 		draw_window(arc)
 	end
@@ -88,8 +131,18 @@ end
 
 function arc_window(n,d)
 	local last_value = scales[SCALE][n].window_start
+	local v
 
-	scales[SCALE][n].window_start = clamp(last_value + d, 0, 60 - WINDOW_SIZE + 1)
+	-- if KEY_HOLD, move by 12 semitones (1 octave) at a time
+	if KEY_HOLD 
+		and 0 <= last_value + d * 12
+		and last_value + d * 12 <= 60 - WINDOW_SIZE + 1 then
+		v = last_value + d * 12
+		scales[SCALE][n].window_start = clamp(v, 0, 60 - WINDOW_SIZE + 1)
+	elseif not KEY_HOLD then
+		v = last_value + d
+		scales[SCALE][n].window_start = clamp(v, 0, 60 - WINDOW_SIZE + 1)
+	end
 end
 
 -- scale -------------------------------------------------------------------- --
@@ -137,11 +190,13 @@ function build_scales()
 
 		for arc=1,4 do
 			scales[i][arc] = {}
-			scales[i][arc].notes = {1}  -- index of in-scale note in window
+			scales[i][arc].notes = {1, 1, 2}  -- index of in-scale note in window
 			scales[i][arc].window_start = 0  -- in semitones from base note
-			scales[i][arc].window = {}  -- in-scale notes in the window
 		end
 	end
+
+	-- initialize the first scale (w/ arbitrary arc) and associated windows
+	draw_scale(1, false)
 end
 
 function draw_root_selection(arc)
@@ -226,6 +281,7 @@ function draw_scale(arc, draw)
 	end
 end
 
+-- Draw the window of the current scale for `arc`. `draw` is a boolean that determines whether to actually draw the notes or just build the window.
 function draw_window(arc)
 	-- LED 34 is the last LED before the start of the scale
 	local start = scales[SCALE][arc].window_start
@@ -237,6 +293,35 @@ function draw_window(arc)
 		note_i = wrap(i + 35, 1, 64)
 		if note then draw_note(note, note_i, arc) end
 	end
+end
+
+-- get a MIDI note from an index of the window using window_start.
+-- last scale value is returned if index is out of bounds.
+function window_note(arc, index)
+	local note_i = scales[SCALE][arc].window_start
+  local last_note_i = scales[SCALE][arc].window_start - 1
+  local i = 0
+
+	-- get the nth not null value in full_scale
+  while i < index and note_i < scales[SCALE][arc].window_start + WINDOW_SIZE do
+    note_i = note_i + 1
+    if scales[SCALE].full_scale[note_i] then
+      i = i + 1
+      last_note_i = note_i
+    end
+  end
+
+	return scales[SCALE].full_scale[last_note_i]
+end
+
+function window_length(arc)
+	for i=1,WINDOW_SIZE+1 do
+		if window_note(arc, i) == window_note(arc, i+1) then
+			return i
+		end
+	end
+
+	return 1
 end
 
 -- Draw MIDI note `note` on arc `arc` at LED `led` based on the current scale.
@@ -263,20 +348,21 @@ end
 function play_note(n)
 	position[n] = position[n] + speed[n]
 	ch = n  -- MIDI channel is the same as the arc ring number
+	local midi_note = window_note(n, scales[SCALE][n].notes[note[n]])
 
 	-- passed the 0 point going in reverse
 	if position[n] < 0 then
-		midi_note_off(notes[n][note[n]],127,ch)
-		note[n] = ((note[n] - 2) % #notes[n]) + 1  -- previous note
-		midi_note_on(notes[n][note[n]],127,ch)
+		midi_note_off(midi_note,127,ch)
+		note[n] = ((note[n] - 2) % #scales[SCALE][n].notes) + 1  -- previous note
+		midi_note_on(midi_note,127,ch)
 		position[n] = position[n] % 1024
 		--ps("%d %d",n,note[n])
 
 	-- passed the 0 point going forward
 	elseif position[n] > 1023 then
-		midi_note_off(notes[n][note[n]],127,ch)
-		note[n] = (note[n] % #notes[n]) + 1  -- next note
-		midi_note_on(notes[n][note[n]],127,ch)
+		midi_note_off(midi_note,127,ch)
+		note[n] = (note[n] % #scales[SCALE][n].notes) + 1  -- next note
+		midi_note_on(midi_note,127,ch)
 		position[n] = position[n] % 1024
 		--ps("%d %d",n,note[n])
 	end
@@ -286,16 +372,16 @@ end
 -- each note is represented by an LED, and the current note is highlighted.
 function draw_sequence(n)
 	local next_note
-
+	
 	-- define next note based on speed
 	if speed[n] < 0 then
-		next_note = ((note[n] - 2) % #notes[n]) + 1
+		next_note = ((note[n] - 2) % #scales[SCALE][n].notes) + 1
 	else
-		next_note = (note[n] % #notes[n]) + 1
+		next_note = (note[n] % #scales[SCALE][n].notes) + 1
 	end
 
 	-- sprocket
-	for m=1,#notes[n] do
+	for m=1,#scales[SCALE][n].notes do
 		-- set past notes and future ones as dim
 		if m > next_note then arc_led(n, 2 * ((m - next_note) % 64) + 1, 1) end
 		if m < next_note then arc_led(n, 2 * ((m - next_note) % 32) + 1, 1) end

@@ -19,9 +19,9 @@ Note sequence "sprockets" through at the top of the ring each time the moving po
 
 **notes**
 
-The top portion shows the notes in the sequence. The selected note is brightest, the currently playing note is slighly less bright, and the rest are dim.
+The top portion shows the notes in the sequence. The selected note is brightest, the currently playing note is slightly less bright, and the rest are dim.
 
-The bottom portion shows two octaves of notes from the scale. The selected note placement is the brightest, the root notes are slightly less bright, and the rest are dim.
+The bottom portion shows the selected window of the scale (within 12 chromatic notes). The selected note placement is the brightest, the root notes are slightly less bright, and the rest are dim.
 
 - **ENC (clockwise)**: select a note
 - **ENC (counter clockwise)**: place the note on the scale (de-selected is a rest)
@@ -31,9 +31,9 @@ The bottom portion shows two octaves of notes from the scale. The selected note 
 
 **window**
 
-Each sequence consists of notes from the scale within a 2-octave window\* of the main scale (see below). The window is indicated by two bright lights surrounding the beginning and end of the window (i.e., the first note of the window is after the first bright light). Aside from these, the root notes are brightest, natural notes are less bright, sharps and flats are dim, and notes off the scale are dark.
+Each sequence consists of notes from the scale within a window\* of the main scale (see below). The window is indicated by lights for each in-scale note. The root notes are brightest, natural notes are less bright, sharps and flats are dim, and notes off the scale are dark.
 
-\**The "window" is 25 notes from a chromatic scale.*
+\**The "window" spans 16 notes from a chromatic scale.*
 
 - **ENC**: define the window for the ring
 - **KEY + ENC**: increment the scale window in octaves
@@ -47,8 +47,9 @@ The ring around **ENC 4** shows a visualization of the scale across 5 chromatic 
 - **ENC 1**: select a scale
 - **ENC 2**: select root note (C, C#, D, ..., B)\*
 - **ENC 3**: set starting octave (can be from 1 to 5)
-- **ENC 4**: cycle scale (set "starting" note)
+- **ENC 4**: modulate the scale up or down by an in-scale interval\*\*
 
 \**The UI here is similar to the scale window, with no root.*
+\*\**At the lowest and highest octave settings, modulating the scale may reduce the total number of notes due to MIDI only consisting of 128 notes.*
 
 You can add up to 32 scales to the top of the Lua file. Scales are defined by a sequence of semitone intervals *whose sum is equal to 12* (e.g., `{2, 2, 1, 2, 2, 2, 1}` represents a major scale).
