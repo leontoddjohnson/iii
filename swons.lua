@@ -13,16 +13,11 @@ scale_intervals = {
 
 scales = {}
 
-notes = {}
-notes[1] = {45,43,50}
-notes[2] = {55,64}
-notes[3] = {69,74,76,79}
-notes[4] = {86,83,81,72,79}
-
 note_selected = {1, 1, 1, 1}  -- selected note of sequence (in notes mode)
 
 led_level = {
 	selected = 15,
+	highlighted = 8,
 	deselected = 3,
 	root = 10,
 	natural = 4,
@@ -30,7 +25,7 @@ led_level = {
 	off_scale = 0
 }
 
-note = {1,1,1,1}  -- note[n] is the index of the current note in notes[n]
+note_playing = {1,1,1,1}  -- the index of the current note in the sequence
 position = {0,0,0,0}  -- position of each arc encoder
 speed = {0,0,0,0}  -- speed of each arc encoder
 
@@ -58,8 +53,16 @@ function redraw_rings()
 end
 
 function arc_rings(n,d)
-	-- any movement on the arc will stop the ring
-	speed[n] = KEY_HOLD and 0 or clamp(speed[n] + d,-32,32)
+	if KEY_HOLD then
+		-- stop ring, and stop playing note
+		speed[n] = 0
+		local midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
+		midi_note_off(midi_note, 127, n)
+
+	else
+		-- any movement on the arc will stop the ring
+		speed[n] = clamp(speed[n] + d, -32, 32)
+	end
 end
 
 -- notes -------------------------------------------------------------------- --
@@ -73,6 +76,12 @@ function redraw_notes()
 		n_notes = #scales[SCALE][n].notes
 		led_start = - ((n_notes + buffer * (n_notes - 1)) // 2) % 64 + 1
 		draw_selection(note_selected[n], n_notes, n, buffer, led_start)
+
+		-- draw playing note as long as it is not already selected
+		if note_playing[n] ~= note_selected[n] then
+			led = wrap(led_start + (buffer + 1) * (note_playing[n] - 1), 1, 64)
+			arc_led(n, led, led_level.highlighted)
+		end
 
 		-- bottom portion: notes in the window
 		led = 32 + WINDOW_SIZE // 2
@@ -348,23 +357,29 @@ end
 function play_note(n)
 	position[n] = position[n] + speed[n]
 	ch = n  -- MIDI channel is the same as the arc ring number
-	local midi_note = window_note(n, scales[SCALE][n].notes[note[n]])
+	local midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
 
 	-- passed the 0 point going in reverse
 	if position[n] < 0 then
 		midi_note_off(midi_note,127,ch)
-		note[n] = ((note[n] - 2) % #scales[SCALE][n].notes) + 1  -- previous note
+
+		-- play previous note
+		note_playing[n] = ((note_playing[n] - 2) % #scales[SCALE][n].notes) + 1
+		midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
 		midi_note_on(midi_note,127,ch)
+		ps("[" .. n .. "]" .. midi_note .. " --> " .. midi_note_name(midi_note))
 		position[n] = position[n] % 1024
-		--ps("%d %d",n,note[n])
 
 	-- passed the 0 point going forward
 	elseif position[n] > 1023 then
 		midi_note_off(midi_note,127,ch)
-		note[n] = (note[n] % #scales[SCALE][n].notes) + 1  -- next note
+
+		-- play next note
+		note_playing[n] = (note_playing[n] % #scales[SCALE][n].notes) + 1
+		midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
 		midi_note_on(midi_note,127,ch)
+		ps("[" .. n .. "] " .. midi_note .. " --> " .. midi_note_name(midi_note))
 		position[n] = position[n] % 1024
-		--ps("%d %d",n,note[n])
 	end
 end
 
@@ -375,9 +390,9 @@ function draw_sequence(n)
 	
 	-- define next note based on speed
 	if speed[n] < 0 then
-		next_note = ((note[n] - 2) % #scales[SCALE][n].notes) + 1
+		next_note = ((note_playing[n] - 2) % #scales[SCALE][n].notes) + 1
 	else
-		next_note = (note[n] % #scales[SCALE][n].notes) + 1
+		next_note = (note_playing[n] % #scales[SCALE][n].notes) + 1
 	end
 
 	-- sprocket
@@ -495,4 +510,14 @@ function print_table(t, indent)
       print(prefix .. tostring(k) .. ": " .. tostring(v))
     end
   end
+end
+
+function midi_note_name(note)
+	if not note or note < 0 or note > 127 then
+		return "invalid note"
+	end
+
+	local octave = note  // 12
+	local note_name = NOTE_NAMES[note % 12 + 1]
+	return note_name .. ' ' .. octave
 end
