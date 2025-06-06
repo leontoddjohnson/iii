@@ -26,6 +26,7 @@ led_level = {
 }
 
 note_playing = {1,1,1,1}  -- the index of the current note in the sequence
+midi_note_playing = {}  -- currently playing MIDI note for each arc
 position = {0,0,0,0}  -- position of each arc encoder
 speed = {0,0,0,0}  -- speed of each arc encoder
 
@@ -57,8 +58,7 @@ function arc_rings(n,d)
 	if KEY_HOLD then
 		-- stop ring, and stop playing note
 		speed[n] = 0
-		local midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
-		midi_note_off(midi_note, 127, n)
+		midi_note_off(midi_note_playing[n], 127, n)
 
 	else
 		-- any movement on the arc will stop the ring
@@ -174,13 +174,6 @@ end
 function arc_scale(n,d)
 	if n == 1 then
 		SCALE = clamp(SCALE + d, 1, #scale_intervals)
-
-		-- stop notes playing
-		local midi_note
-		for m=1,4 do
-			midi_note = window_note(n, scales[SCALE][m].notes[note_playing[m]])
-			midi_note_off(midi_note, 127, m)
-		end
 	elseif n == 2 then
 		scales[SCALE].root = wrap(scales[SCALE].root + d, 0, 11)
 	elseif n == 3 then
@@ -189,6 +182,8 @@ function arc_scale(n,d)
 		local mod_bound = #scales[SCALE].scale - 1
 		scales[SCALE].mod = clamp(scales[SCALE].mod - d, -mod_bound, mod_bound)
 	end
+
+	-- reset scale
 	scales[SCALE].full_scale = {}
 end
 
@@ -315,7 +310,7 @@ function draw_window(arc)
 end
 
 -- get a MIDI note from an index of the window using window_start.
--- last scale value is returned if index is out of bounds.
+-- values too large return the last window value, values too small return nil.
 function window_note(arc, index)
 	local note_i = scales[SCALE][arc].window_start
   local last_note_i = scales[SCALE][arc].window_start - 1
@@ -330,6 +325,7 @@ function window_note(arc, index)
     end
   end
 
+	-- if index is too large, return the last note
 	return scales[SCALE].full_scale[last_note_i]
 end
 
@@ -367,28 +363,40 @@ end
 function play_note(n)
 	position[n] = position[n] + speed[n]
 	ch = n  -- MIDI channel is the same as the arc ring number
-	local midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
+	local midi_note
 
 	-- passed the 0 point going in reverse
 	if position[n] < 0 then
-		midi_note_off(midi_note,127,ch)
+		midi_note_off(midi_note_playing[n],127,ch)
 
 		-- play previous note
 		note_playing[n] = ((note_playing[n] - 2) % #scales[SCALE][n].notes) + 1
 		midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
-		midi_note_on(midi_note,127,ch)
-		ps("[" .. n .. "]" .. midi_note .. " --> " .. midi_note_name(midi_note))
+
+		if midi_note then
+			midi_note_on(midi_note,127,ch)
+			midi_note_playing[n] = midi_note
+			ps("[" .. n .. "] " .. midi_note .. " --> " .. midi_note_name(midi_note))
+		end
+
+		-- set position within bounds
 		position[n] = position[n] % 1024
 
 	-- passed the 0 point going forward
 	elseif position[n] > 1023 then
-		midi_note_off(midi_note,127,ch)
+		midi_note_off(midi_note_playing[n],127,ch)
 
 		-- play next note
 		note_playing[n] = (note_playing[n] % #scales[SCALE][n].notes) + 1
 		midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
-		midi_note_on(midi_note,127,ch)
-		ps("[" .. n .. "] " .. midi_note .. " --> " .. midi_note_name(midi_note))
+
+		if midi_note then
+			midi_note_on(midi_note,127,ch)
+			midi_note_playing[n] = midi_note
+			ps("[" .. n .. "] " .. midi_note .. " --> " .. midi_note_name(midi_note))
+		end
+
+		-- set position within bounds
 		position[n] = position[n] % 1024
 	end
 end
