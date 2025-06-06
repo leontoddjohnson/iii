@@ -204,8 +204,8 @@ function build_scales()
 
 		for arc=1,4 do
 			scales[i][arc] = {}
-			scales[i][arc].notes = {1, 1, 2}  -- index of in-scale note in window
-			scales[i][arc].window_start = 0  -- in semitones from base note
+			scales[i][arc].notes = {1, 4, 3}  -- index of in-scale note in window
+			scales[i][arc].window_start = 24  -- in semitones from base note
 		end
 	end
 
@@ -315,6 +315,11 @@ function window_note(arc, index)
 	local note_i = scales[SCALE][arc].window_start
   local last_note_i = scales[SCALE][arc].window_start - 1
   local i = 0
+
+	-- invalid index
+	if index == nil or index < 1 then
+		return nil
+	end
 
 	-- get the nth not null value in full_scale
   while i < index and note_i < scales[SCALE][arc].window_start + WINDOW_SIZE do
