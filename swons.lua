@@ -112,6 +112,7 @@ function arc_notes(n,d)
 		if d > 0 and n_notes < MAX_NOTES then
 			-- let any new note be the first note in the window
 			table.insert(scales[SCALE][n].notes, 1)
+			note_selected[n] = #scales[SCALE][n].notes	-- select the new note
 		elseif d < 0 and n_notes > 1 then
 			if note_selected[n] == n_notes then
 				-- if the last note is selected, select the previous one
@@ -452,14 +453,16 @@ function note_is_natural(note)
 end
 
 function set_arc_res(mode)
+	local res
 	if mode == 1 then
 		for n=1,4 do arc_res(n, 1) end
 	elseif mode == 2 then
 		for n=1,4 do arc_res(n, 16) end
 	elseif mode == 3 then
-		for n=1,4 do arc_res(n, 8) end
+		res = KEY_HOLD and 24 or 8
+		for n=1,4 do arc_res(n, res) end
 	elseif mode == 4 then
-		for n=1,4 do arc_res(n, 8) end
+		for n=1,4 do arc_res(n, 12) end
 	end
 end
 
@@ -508,9 +511,11 @@ function arc_key(z)
 			KEY_HELD = false
 		else
 			MODE = (MODE % 4) + 1  -- cycle through modes
-			set_arc_res(MODE)
 		end
 	end
+	
+	set_arc_res(MODE)
+
 end
 
 arc_refresh()
