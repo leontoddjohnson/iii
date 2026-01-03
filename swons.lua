@@ -26,10 +26,11 @@ led_level = {
 }
 
 note_playing = {1,1,1,1}  -- the index of the current note in the sequence
-midi_note_playing = {}  -- currently playing MIDI note for each arc
+retrigger_cue = {{}, {}, {}, {}}	-- notes logged after retrigger for each arc
 position = {0,0,0,0}  -- position of each arc encoder
 speed = {0,0,0,0}  -- speed of each arc encoder
 
+RETRIGGER = {3, 3, 3, 3}	 -- # retriggered notes to allow before midi-off
 REDRAW_FRAMERATE = 30
 SELECTION_START = 40
 WINDOW_SIZE = 15  -- size of the window in semitones
@@ -56,9 +57,15 @@ end
 
 function arc_rings(n,d)
 	if KEY_HOLD then
-		-- stop ring, and stop playing note
+		-- stop ring
 		speed[n] = 0
-		midi_note_off(midi_note_playing[n], 127, n)
+
+		-- stop playing all notes in retrigger cue
+		for i, note in ipairs(retrigger_cue[n]) do
+			midi_note_off(note, 127, n)
+		end
+
+		retrigger_cue[n] = {}
 
 	else
 		-- any movement on the arc will stop the ring
@@ -366,44 +373,65 @@ function sum(t)
 end
 
 -- play MIDI. each encoder corresponds to the corresponding MIDI channel.
-function play_note(n)
+function play_arc(n)
 	position[n] = position[n] + speed[n]
-	ch = n  -- MIDI channel is the same as the arc ring number
 	local midi_note
 
 	-- passed the 0 point going in reverse
 	if position[n] < 0 then
-		midi_note_off(midi_note_playing[n],127,ch)
-
 		-- play previous note
 		note_playing[n] = ((note_playing[n] - 2) % #scales[SCALE][n].notes) + 1
 		midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
-
-		if midi_note then
-			midi_note_on(midi_note,127,ch)
-			midi_note_playing[n] = midi_note
-			ps("[" .. n .. "] " .. midi_note .. " --> " .. midi_note_name(midi_note))
-		end
-
-		-- set position within bounds
-		position[n] = position[n] % 1024
+		play_note(midi_note, n)
 
 	-- passed the 0 point going forward
 	elseif position[n] > 1023 then
-		midi_note_off(midi_note_playing[n],127,ch)
-
 		-- play next note
 		note_playing[n] = (note_playing[n] % #scales[SCALE][n].notes) + 1
 		midi_note = window_note(n, scales[SCALE][n].notes[note_playing[n]])
+		play_note(midi_note, n)
 
-		if midi_note then
-			midi_note_on(midi_note,127,ch)
-			midi_note_playing[n] = midi_note
-			ps("[" .. n .. "] " .. midi_note .. " --> " .. midi_note_name(midi_note))
+	end
+
+	-- set position within bounds
+	position[n] = position[n] % 1024
+end
+
+-- play `midi_note` on channel `n` after checking retrigger list.
+-- if `retrigger_cue` list has reached `RETRIGGER` max, then stop
+-- the first of those notes before playing `midi_note`. Tack this
+-- note onto `retrigger_cue`. (Assumes channel = arc number.)
+function play_note(midi_note, n)
+	local retrigger_index
+
+	-- stop earliest instance in cue if over `RETRIGGER` number
+	if #retrigger_cue[n] >= RETRIGGER[n] then
+		midi_note_off(retrigger_cue[n][1],127,n)
+		table.remove(retrigger_cue[n], 1)
+	end
+
+	if midi_note then
+		-- check for retriggering
+		retrigger_index = index_of(retrigger_cue[n], midi_note)
+
+		-- retrigger if needed
+		if retrigger_index then
+			midi_note_off(midi_note,127,n)
+			table.remove(retrigger_cue[n], retrigger_index)
 		end
 
-		-- set position within bounds
-		position[n] = position[n] % 1024
+		-- play note
+		midi_note_on(midi_note,127,n)
+		table.insert(retrigger_cue[n], midi_note)
+		ps("[" .. n .. "] " .. midi_note .. " --> " .. midi_note_name(midi_note))
+		
+	else
+		ps("[" .. n .. "] ... no note.")
+		
+	end
+
+	for i,note in ipairs(retrigger_cue[n]) do
+		ps('cue ' .. i .. ' -- ' .. note)
 	end
 end
 
@@ -473,7 +501,7 @@ end
 function tick()
 	for n=1,4 do 
 		arc_led_all(n,0)  -- refresh
-		play_note(n)   -- continue playing
+		play_arc(n)   -- continue playing
 	end
 
 	if MODE == 1 then
@@ -548,4 +576,12 @@ function midi_note_name(note)
 	local octave = note  // 12
 	local note_name = NOTE_NAMES[note % 12 + 1]
 	return note_name .. ' ' .. octave
+end
+
+function index_of(t, value)
+	for i, v in ipairs(t) do
+		if value and value == v then
+			return i
+		end
+	end
 end
