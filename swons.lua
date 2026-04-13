@@ -463,9 +463,9 @@ end
 -- (cr: @tehn, from snows.lua)
 function draw_point(n,x)
 	local c = x >> 4  -- bitwise shift right (divide by 2^4, round down)
-	arc_led_rel(n,c%64+1,15)
-	arc_led_rel(n,(c+1)%64+1,x%16)
-	arc_led_rel(n,(c+63)%64+1,15-(x%16))
+	arc_led(n,c%64+1,15, true)
+	arc_led(n,(c+1)%64+1,x%16, true)
+	arc_led(n,(c+63)%64+1,15-(x%16), true)
 end
 
 function note_is_natural(note)
@@ -500,7 +500,7 @@ end
 
 function tick()
 	for n=1,4 do 
-		arc_led_all(n,0)  -- refresh
+		arc_led_ring(n,0)  -- refresh
 		play_arc(n)   -- continue playing
 	end
 
@@ -516,7 +516,7 @@ function tick()
 	arc_refresh()
 end
 
-function arc(n,d)
+function event_arc(n,d)
 	if MODE == 1 then
 		arc_rings(n,d)
 	elseif MODE == 2 then
@@ -531,7 +531,7 @@ function arc(n,d)
 	KEY_HELD = KEY_HOLD
 end
 
-function arc_key(z)
+function event_arc_key(z)
 	KEY_HOLD = z == 1 and true or false
 
 	if z == 0 then
@@ -549,7 +549,8 @@ end
 arc_refresh()
 set_arc_res(MODE)
 build_scales()
-ticker = metro.new(tick, 1000//REDRAW_FRAMERATE)
+ticker = metro.init(tick, 1/REDRAW_FRAMERATE)
+ticker:start()
 
 -- ========================================================================== --
 -- HELPER FUNCTIONS                                                           --
